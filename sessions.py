@@ -26,7 +26,7 @@ class UserSession(object):
     mun_to_reg_ratios : :obj:`dict`
         Capacity ratios of municipality to regional values, for details see
         :meth:`stemp_abw.sessions.UserSession.create_mun_data_ratio_for_aggregation`
-    tech_ratios : :pandas:`pandas.DataFrame<dataframe>`
+    tech_ratios : :pandas:`pandas.DataFrame`
         Capacity ratios of specific technologies in the region belonging to the
         same category from status quo scenario, for details see
         :meth:`stemp_abw.sessions.UserSession.create_reg_tech_ratios`
@@ -73,7 +73,7 @@ class UserSession(object):
         scn_data = json.loads(scenario.data.data)
         reg_data = pd.DataFrame.from_dict(scn_data['mun_data'],
                                           orient='index'). \
-            sum(axis=0).round(decimals=1).to_dict()
+            sum(axis=0).round(decimals=3).to_dict()
         reg_data.update(scn_data['reg_params'])
         return reg_data
         
@@ -234,9 +234,10 @@ class UserSession(object):
                 RepoweringScenario.objects.get(
                     id=scn_data['reg_params']['repowering_scn'])
             # 2) mun data update
+            repower_data = json.loads(
+                self.user_scenario.repowering_scenario.data)
             # free sceario
             if int(ctrl_data['dd_repowering']) == -1:
-                print(self.user_scenario)
                 sl_wind_repower_pot = round(
                     sum([scn_data['mun_data'][mun]['gen_capacity_wind']
                          for mun in scn_data['mun_data'].keys()]
@@ -244,7 +245,6 @@ class UserSession(object):
                 )
             # other scenarios
             else:
-                repower_data = json.loads(self.user_scenario.repowering_scenario.data)
                 for mun in scn_data['mun_data']:
                     scn_data['mun_data'][mun]['gen_capacity_wind'] =\
                         repower_data[mun]['gen_capacity_wind']
@@ -256,13 +256,16 @@ class UserSession(object):
         else:
             sl_wind_repower_pot = None
 
+        # update user scenario
         self.user_scenario.data.data = json.dumps(scn_data,
                                                   sort_keys=True)
 
         return sl_wind_repower_pot
 
     def __disaggregate_reg_to_mun_data(self, reg_data):
-        """Disaggregate given regional data to given municipal data
+        """Disaggregate and assign given regional data to given municipal data
+
+        # TODO: Insert notice that energy values are updated after sim + add reference
         
         Parameters
         ----------
@@ -273,7 +276,7 @@ class UserSession(object):
         for param in reg_data:
             if param in self.mun_to_reg_ratios.columns:
                 mun_data_upd[param] = (self.mun_to_reg_ratios[param] *
-                                       reg_data[param]).round(decimals=1)
+                                       reg_data[param]).round(decimals=3)
         return mun_data_upd.to_dict(orient='index')
 
     # def __prepare_re_potential_
@@ -288,10 +291,7 @@ class Simulation(object):
         self.esys = None
         self.session = session
         self.results = Results(simulation=self)
-        #self.create_esys()
-        #self.load_or_simulate()
-        #self.x = self.results.get_panel_results()
-    
+
     def create_esys(self):
         """Create energy system, parametrize and add nodes"""
 
@@ -301,7 +301,13 @@ class Simulation(object):
                                     end=SIM_CFG['date_to'],
                                     freq=SIM_CFG['freq']))
         # create nodes from user scenario and add to energy system
-        self.esys.add(*create_nodes(**json.loads(self.session.user_scenario.data.data)))
+        self.esys.add(
+            *create_nodes(
+                **json.loads(
+                    self.session.user_scenario.data.data
+                )
+            )
+        )
 
     def load_or_simulate(self):
         """Load results from DB if existing, start simulation if not
@@ -325,7 +331,13 @@ class Simulation(object):
         # update result raw data
         self.results.set_result_raw_data(results_raw=results,
                                          param_results_raw=param_results)
-        # TODO: save results
+        # update energy values of mun data
+        self.results.update_mun_energy_results_post_simulation()
+        # get layer results for user scn
+        self.results.layer_results =\
+            self.results.get_layer_results()
+
+        # TODO: save results to DB
 
 
 class Tracker(object):

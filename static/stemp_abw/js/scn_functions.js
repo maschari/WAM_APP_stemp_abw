@@ -20,18 +20,21 @@ function updateScenarioList(scenarios) {
 function updateScenarioControls(scn_name, scn_desc, controls, apply) {
   // Repowering dropdown
   if (apply === true) {
-    rep_dd = $('#dd_repowering').prop('value', controls['dd_repowering'])
+    $('#dd_repowering').prop('value', controls['dd_repowering']);
     if (controls['dd_repowering'] == -1) {
       $('#sl_wind').data("ionRangeSlider").update({
-        disable: false,
+        disable: false
       });
       activateRePotScenarioControls(true);
     } else {
-      $('#sl_wind').data("ionRangeSlider").update({
-        disable: true
-      });
-      activateRePotScenarioControls(false);
-      removeRePotAreaLayers();
+      function disableIRS() {
+        $('#sl_wind').data("ionRangeSlider").update({
+          disable: true
+        });
+        activateRePotScenarioControls(false);
+        removeRePotAreaLayers();
+      };
+      setTimeout(disableIRS, 100);
     }
   }
 
@@ -125,7 +128,7 @@ $('.switch-input.esys').click( function () {
 function changeScenarioControlRepDropdown(element_id) {
   if (element_id == 'dd_repowering') {
     //ctrlScenarioPost('sl_wind', $('#sl_wind').data("ionRangeSlider").result.from);
-    ctrlScenarioPost(element_id, $('#' + element_id).prop('value'));
+    ctrlScenarioPost(element_id, parseInt($('#' + element_id).prop('value')));
     if ($('#' + element_id).prop('value') != -1) {
       removeRePotAreaLayers();
     };
@@ -149,6 +152,7 @@ function updateScenarioControlRepDropdown(sl_wind_value) {
     activateRePotScenarioControls(true);
     wind_slider.update({
       from: sl_wind_value,
+      max: 3310,
       disable: false
     });
     $('#rc-tooltip-areas-enabled').foundation('show');
@@ -167,6 +171,12 @@ function updateScenarioControlRepDropdown(sl_wind_value) {
 }
 
 function activateRePotScenarioControls(enable) {
+  //reset values
+  $('#sl_dist_resid').data("ionRangeSlider").update({
+    from: 1000
+  });
+  $('#cb_use_forest').prop('checked', false);
+  //disable controls
   $('#cb_use_forest').prop('disabled', !enable);
   $('#sl_dist_resid').data("ionRangeSlider").update({
     disable: !enable,

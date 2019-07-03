@@ -11,6 +11,10 @@ function ctrlScenario(element_id) {
     console.log('apply scn btn');
     action = 'apply_scenario';
     data = $('#select-scn-frm').val();
+  } else if (element_id == 'init-sq-scn') {
+    console.log('init sq scn');
+    action = 'init_sq_scenario';
+    data = $('#select-scn-frm').val();
   }
 
   $.ajax({
@@ -27,16 +31,15 @@ function ctrlScenario(element_id) {
         showErrorPopup();
     }
   }).done(function(returned_data) {
+    var scn_data = JSON.parse(returned_data);
     if (element_id == 'select-scn-frm') {
-      var scn_data = JSON.parse(returned_data);
       //console.log(scn_data);
       updateScenarioList(scn_data['scenario_list']);
       updateScenarioControls(scn_data['scenario']['name'],
                              scn_data['scenario']['desc'],
                              scn_data['controls'],
                              false);
-    } else if (element_id == 'apply-scn-btn') {
-      var scn_data = JSON.parse(returned_data)
+    } else if (element_id == 'apply-scn-btn' || element_id == 'init-sq-scn') {
       //console.log(returned_data);
       updateScenarioControls(scn_data['scenario']['name'],
                              scn_data['scenario']['desc'],
@@ -76,29 +79,35 @@ function ctrlSimulate() {
 
   // show simulation spinner
   $('#loader-text').html('<i class="icon ion-coffee"></i> Simuliere...');
-  $('#loader-detail-text').text('');
+  $('#loader-detail-text').text('(max. 1 Minute)');
   toggleSpinnerVisibility();
 
   //element.prop("disabled", true);
   //$('#simulation-save-btn').show();
 
   $.ajax({
-      url : '/stemp_abw/app/',
-      type : "POST",
-      data : {action: 'simulate',
-              data: '',
-              csrfmiddlewaretoken: csrf_token},
-      success: function(page) {
-          console.log('success');
-      },
-      error: function(page) {
-          console.log('error');
-          showErrorPopup();
+    url: '/stemp_abw/app/',
+    type: "POST",
+    data: {
+      action: 'simulate',
+      data: '',
+      csrfmiddlewaretoken: csrf_token
+    },
+    success: function (page) {
+      console.log('simulation success');
+      console.log('hidding result layers and legends');
+      hideResultLayers();
+      if (simulation_info.hidden === false) {
+        simulation_info.hidden = true;
       }
-  }).done(function(returned_data){
-      //updateSimProgressBar(25);
-      console.log(returned_data);
-
+      console.log('calling result_map_init ...');
+      window.result_map_init(window.maps);
+    },
+    error: function (page) {
+      console.log('error');
+      showErrorPopup();
+    }
+  }).done(function (returned_data) {
       // hide simulation spinner
       toggleSpinnerVisibility();
 
@@ -106,77 +115,89 @@ function ctrlSimulate() {
       if ($('#panel-results').hasClass('is-collapsed')) {
         getSimulationResults();
       } else {
-        $('#rc-tooltip-results-available').foundation('show');
-        highlightPanelTab('tabsResults');
+        if (!$('#panel-results').hasClass('is-active')) {
+          $('#rc-tooltip-results-available').foundation('show');
+          highlightPanelTab('tabsResults');
+        }
       }
   });
 };
 
-//// Control simulation
-//function checkForSimulationResults() {
-//  console.log('checking for results...');
-//
-//  $.ajax({
-//      url : '/stemp_abw/app/',
-//      type : "POST",
-//      data : {action: 'check_results',
-//              data: '',
-//              csrfmiddlewaretoken: csrf_token},
-//      success: function(page) {
-//          console.log('success');
-//      },
-//      error: function(page) {
-//          console.log('error');
-//      }
-//  }).done(function(returned_data){
-//      if (returned_data === 'none') {
-//          console.log(Highcharts.charts);
-//
-//          for (var hc_ctr = 0; hc_ctr < 11; hc_ctr++) {
-//              idx=$("#hc_" + hc_ctr.toString()).data('highchartsChart');
-//              Highcharts.charts[idx].showLoading('Daten noch nicht verfügbar,</br>bitte Simulation starten..');
-//          };
-//      } else {
-//          data = JSON.parse(returned_data);
-//          console.log(data)
-//      };
-//      getSimulationResults();
-//  });
-//};
-
 // Load simulation results from serial view
 function getSimulationResults() {
+    // Check if simulation results are up-to-date
     $.ajax({
-        url: '/stemp_abw/results/',
+        url: '/stemp_abw/sim_status.data',
         type : "GET",
         success: function(data) {
-            idx=parseInt($("#hc_res_wind_time")[0].getAttribute('data-highcharts-chart'))
-            idx2=parseInt($("#hc_res_summary_scn")[0].getAttribute('data-highcharts-chart'))
-            idx3=parseInt($("#hc_res_summary_sq")[0].getAttribute('data-highcharts-chart'))
-            idx4=parseInt($("#hc_res_production_scn")[0].getAttribute('data-highcharts-chart'))
-            idx5=parseInt($("#hc_res_production_sq")[0].getAttribute('data-highcharts-chart'))
+            // get indices of chart (needed since HC increments on reload)
+            idx1=parseInt($("#hc_column_power_prod_both_scn")[0].getAttribute('data-highcharts-chart'))
+            idx2=parseInt($("#hc_column_power_dem_both_scn")[0].getAttribute('data-highcharts-chart'))
+            idx3=parseInt($("#hc_column_power_own_cons_both_scn")[0].getAttribute('data-highcharts-chart'))
+            idx4=parseInt($("#hc_pie_power_production_user_scn")[0].getAttribute('data-highcharts-chart'))
+            idx5=parseInt($("#hc_pie_power_production_sq_scn")[0].getAttribute('data-highcharts-chart'))
+            idx6=parseInt($("#hc_column_power_prod_m_user_scn")[0].getAttribute('data-highcharts-chart'))
+            //idx7=parseInt($("#hc_res_wind_time")[0].getAttribute('data-highcharts-chart'))
 
-            if (data == null) {
-                Highcharts.charts[idx].showLoading('Das Szenario wurde verändert.</br>Für Ergebnisse bitte Simulation starten.');
-                Highcharts.charts[idx2].showLoading('Das Szenario wurde verändert.</br>Für Ergebnisse bitte Simulation starten.');
-                Highcharts.charts[idx4].showLoading('Das Szenario wurde verändert.</br>Für Ergebnisse bitte Simulation starten.');
-            } else {
-                Highcharts.charts[idx].series[0].setData(data['hc_res_wind_time']);
-                Highcharts.charts[idx].hideLoading();
+            const hc_idx_array = [idx1, idx2, idx3, idx4, idx5, idx6]//, idx7]
 
-                Highcharts.charts[idx2].series[0].setData(data['hc_res_summary_scn']);
-                Highcharts.charts[idx2].hideLoading();
-                Highcharts.charts[idx3].series[0].setData(data['hc_res_summary_sq']);
+            // Check if results are not outdated
+            if (data['sim_status'] == 'init' || data['sim_status'] == 'up_to_date') {
+                $.ajax({
+                    url: '/stemp_abw/result_charts.data',
+                    type : "GET",
+                    success: function(data) {
 
-                Highcharts.charts[idx4].series[0].setData(data['hc_res_production_scn']);
-                Highcharts.charts[idx4].hideLoading();
-                Highcharts.charts[idx5].series[0].setData(data['hc_res_production_sq']);
+                        while(Highcharts.charts[idx1].series.length > 0)
+                            Highcharts.charts[idx1].series[0].remove(true);
+                        for (var i = 0; i < data['hc_column_power_prod_both_scn'].length; i++) {
+                            Highcharts.charts[idx1].addSeries(data['hc_column_power_prod_both_scn'][i]);
+                        }
+                        while(Highcharts.charts[idx2].series.length > 0)
+                            Highcharts.charts[idx2].series[0].remove(true);
+                        for (var i = 0; i < data['hc_column_power_dem_both_scn'].length; i++) {
+                            Highcharts.charts[idx2].addSeries(data['hc_column_power_dem_both_scn'][i]);
+                        }
+                        while(Highcharts.charts[idx3].series.length > 0)
+                            Highcharts.charts[idx3].series[0].remove(true);
+                        for (var i = 0; i < data['hc_column_power_own_cons_both_scn'].length; i++) {
+                            Highcharts.charts[idx3].addSeries(data['hc_column_power_own_cons_both_scn'][i]);
+                        }
+
+                        //Highcharts.charts[idx3].series[0].setData(data['hc_column_power_own_cons_both_scn']);
+                        Highcharts.charts[idx4].series[0].setData(data['hc_pie_power_production_user_scn']);
+                        Highcharts.charts[idx5].series[0].setData(data['hc_pie_power_production_sq_scn']);
+
+                        while(Highcharts.charts[idx6].series.length > 0)
+                            Highcharts.charts[idx6].series[0].remove(true);
+                        for (var i = 0; i < data['hc_column_power_prod_m_user_scn'].length; i++) {
+                            Highcharts.charts[idx6].addSeries(data['hc_column_power_prod_m_user_scn'][i]);
+                        }
+
+                        //Highcharts.charts[idx7].series[0].setData(data['hc_res_wind_time']);
+
+                        // Hide loading text
+                        hc_idx_array.forEach(function (item, index) {
+                            Highcharts.charts[item].hideLoading();
+                        });
+
+                    },
+                    error: function(page) {
+                        console.log('error');
+                        showErrorPopup();
+                    },
+                    cache: false
+                });
+            } else if (data['sim_status'] == 'outdated') {
+                // Show loading text
+                hc_idx_array.forEach(function (item, index) {
+                    Highcharts.charts[item].showLoading('Das Szenario wurde verändert.</br>Für Ergebnisse bitte Simulation starten.');
+                });
             };
         },
         error: function(page) {
             console.log('error');
             showErrorPopup();
         },
-        cache: false
     });
 }
